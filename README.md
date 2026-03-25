@@ -39,13 +39,6 @@ That means:
 
 Recent changes in this fork are tracked in [CHANGELOG.md](CHANGELOG.md).
 
-Highlights:
-
-- fixed repeated `timeInfo` values caused by stale timestamp reuse during CSV export
-- added optional `signal_err-*` and `snr-*` CSV columns for per-aperture uncertainty export
-- added `Photometry Noise` controls in the GUI for detector gain and read noise
-- moved the photometry error formula explanation into a cleaner info dialog
-
 ## Installation
 
 PyMovie requires Python 3.7+ according to the application code. The dependency stack is fairly pinned, so a clean virtual environment is strongly recommended.
