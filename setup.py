@@ -73,7 +73,7 @@ if __name__ == "__main__":
         maintainer='Bob Anderson',
         maintainer_email='bob.anderson.ok@gmail.com',
         keywords=KEYWORDS,
-        long_description=read("README.rst"),
+        long_description=read("README.md"),
         packages=PACKAGES,
         package_dir={"": "src"},
         zip_safe=False,
