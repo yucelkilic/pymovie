@@ -7911,6 +7911,7 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
             self.fillApertureDictionaries()
             write_signal_error_columns = self.writeSignalErrorCsvCheckBox.isChecked()
             gain, read_noise = self.getPhotometryNoiseSettings()
+            signal_error_note = self.getPhotometryNoiseApproximationNote(gain, read_noise)
 
             with open(filename, 'w') as f:
                 # Standard header
@@ -7982,6 +7983,8 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
                     f.write(f'# signal_err settings: gain_e_per_adu={gain:0.6f}  read_noise_e={read_noise:0.6f}\n')
                     f.write(f'# signal_err formula: sigma_total = sqrt(sigma_bkg^2*(N_ap + N_ap^2/N_bkg) + '
                             f'max(signal,0)/gain + N_ap*(read_noise/gain)^2)\n')
+                    if signal_error_note is not None:
+                        f.write(f'{signal_error_note}\n')
 
                 # csv column headers with aperture names in entry order
                 # Tangra uses FrameNo
@@ -8259,6 +8262,24 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
             read_noise = 0.0
 
         return gain, read_noise
+
+    @staticmethod
+    def getPhotometryNoiseApproximationNote(gain, read_noise):
+        placeholder_terms = []
+
+        if np.isclose(gain, 1.0):
+            placeholder_terms.append('gain=1.0 e-/ADU')
+        if np.isclose(read_noise, 0.0):
+            placeholder_terms.append('read_noise=0.0 e-')
+
+        if not placeholder_terms:
+            return None
+
+        placeholders = ', '.join(placeholder_terms)
+        return (
+            '# signal_err note: detector noise settings still include default placeholder values '
+            f'({placeholders}); interpret signal_err as approximate unless those values are intentional.'
+        )
 
     def calcSignalErrorAndSnr(self, signal, sigma_bkg, signal_pixel_count, background_pixel_count):
         if signal is None:

@@ -22,6 +22,8 @@ Main capabilities in this fork include:
 - aperture photometry with static and dynamic masks
 - timestamp extraction and export
 - support for AVI, MOV, SER, ADV, AAV, FITS-folder workflows, and related calibration utilities
+- uncompressed RV24 AVI fallback support for files that OpenCV cannot decode
+- OCR-timestamped AVI to FITS conversion for external photometry workflows
 - CSV export for downstream analysis
 - bundled PDF help inside the application
 
@@ -107,6 +109,19 @@ The calculation combines:
 - detector read noise
 
 The detailed formula is available from the small info button next to the `write signal_err/snr columns` option inside the GUI.
+
+When default placeholder detector values are still in use, the CSV header includes a `signal_err note` line so downstream analysis can treat those uncertainty values as approximate.
+
+## AVI To FITS Conversion
+
+This fork adds a conversion tool for AVI files with OCR-readable timestamps.
+
+After opening an AVI and selecting or defining the OCR timestamp profile, use `Timestamp -> Convert AVI to FITS`. The converter can write either:
+
+- full-frame FITS files to `fits_converted`
+- chronological upper/lower field FITS files to `fits_converted_fields`
+
+Field mode is intended for higher time resolution work. It writes each AVI frame as two FITS images in timestamp order, preserving the upper and lower OCR-derived timestamps in `DATE-OBS`. A progress dialog shows conversion status and allows cancellation.
 
 ## Documentation
 

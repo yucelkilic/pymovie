@@ -4,6 +4,22 @@ This changelog tracks **fork-specific** changes in this repository.
 
 It is not a replacement for the original PyMovie version history bundled in `src/pymovie/PyMovie-info.pdf`. That PDF reflects the upstream project history; this file records the custom work done in this personal fork.
 
+## 2026-08-09
+
+### Added
+
+- uncompressed RV24 AVI reader fallback for AVI files that OpenCV cannot open
+- `Timestamp -> Convert AVI to FITS` tool for OCR-timestamped AVI exports
+- full-frame FITS export to `fits_converted`
+- chronological upper/lower field FITS export to `fits_converted_fields` for higher time resolution photometry
+- FITS headers with OCR-derived `DATE-OBS`, source frame, field order, exposure metadata, and OCR validation flags
+- progress dialog with cancellation while converting AVI files to FITS
+- CSV header warning when `signal_err/snr` export still uses placeholder detector noise settings
+
+### Changed
+
+- `python main.py` can run directly from `src/pymovie` by adding the package parent to `sys.path` when needed
+
 ## 2026-03-25
 
 ### Added
