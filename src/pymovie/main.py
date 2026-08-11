@@ -346,6 +346,166 @@ class Raw24AviReader:
         return True, frame
 
 
+class PyAvAviReader:
+    """OpenCV-like AVI reader backed by PyAV for codecs OpenCV cannot decode."""
+
+    is_pyav_avi = True
+
+    def __init__(self, filename):
+        import av
+
+        self.av = av
+        self.filename = filename
+        self.container = None
+        self.stream = None
+        self.frame_iter = None
+        self.width = 0
+        self.height = 0
+        self.frame_count = 0
+        self.fps = 0.0
+        self.fourcc = ''
+        self.next_frame = 0
+        self.decoded_frame_num = 0
+        self.seek_jump_threshold = 50
+        self._open()
+
+    def _open(self):
+        self.container = self.av.open(self.filename)
+        self.stream = self.container.streams.video[0]
+        self.stream.thread_type = 'AUTO'
+
+        codec_context = self.stream.codec_context
+        self.width = codec_context.width
+        self.height = codec_context.height
+        self.frame_count = int(self.stream.frames or 0)
+        self.fps = self._rateToFloat(self.stream.average_rate)
+        if not self.fps:
+            self.fps = self._rateToFloat(codec_context.framerate)
+        self.fourcc = str(getattr(codec_context, 'codec_tag', '') or '').strip()
+        if not self.fourcc and codec_context.name:
+            self.fourcc = codec_context.name[:4].upper()
+
+        self._resetDecoder()
+
+    @staticmethod
+    def _rateToFloat(rate):
+        if not rate:
+            return 0.0
+        try:
+            return float(rate)
+        except (TypeError, ValueError, ZeroDivisionError):
+            return 0.0
+
+    def _resetDecoder(self):
+        if self.container is None:
+            return
+        self.container.close()
+        self.container = self.av.open(self.filename)
+        self.stream = self.container.streams.video[0]
+        self.stream.thread_type = 'AUTO'
+        self.frame_iter = self.container.decode(self.stream)
+        self.decoded_frame_num = 0
+
+    def _seekToFrame(self, frame_num):
+        if not self.fps or not self.stream or not self.stream.time_base:
+            return False
+
+        try:
+            offset = int((frame_num / self.fps) / float(self.stream.time_base))
+            self.container.seek(offset, stream=self.stream, any_frame=False, backward=True)
+            self.frame_iter = self.container.decode(self.stream)
+            self.decoded_frame_num = None
+        except Exception:
+            return False
+
+        return True
+
+    def _frameNumberFromFrame(self, frame):
+        if self.fps:
+            if frame.pts is not None and self.stream.time_base:
+                return int(round(float(frame.pts * self.stream.time_base) * self.fps))
+            if frame.time is not None:
+                return int(round(float(frame.time) * self.fps))
+        return None
+
+    def _readDecodedFrame(self):
+        frame = next(self.frame_iter)
+        frame_num = self._frameNumberFromFrame(frame)
+        if frame_num is None:
+            if self.decoded_frame_num is None:
+                frame_num = 0
+            else:
+                frame_num = self.decoded_frame_num
+        self.decoded_frame_num = frame_num + 1
+        return frame_num, frame
+
+    @staticmethod
+    def _fourccToInt(fourcc):
+        fourcc = (fourcc or '')[:4].ljust(4, '\x00')
+        return sum(ord(char) << (8 * index) for index, char in enumerate(fourcc))
+
+    def isOpened(self):
+        return self.container is not None
+
+    def release(self):
+        if self.container is not None:
+            self.container.close()
+            self.container = None
+            self.frame_iter = None
+
+    def get(self, prop_id):
+        if prop_id == cv2.CAP_PROP_POS_FRAMES:
+            return float(self.next_frame)
+        if prop_id == cv2.CAP_PROP_FRAME_COUNT:
+            return float(self.frame_count)
+        if prop_id == cv2.CAP_PROP_FPS:
+            return float(self.fps)
+        if prop_id == cv2.CAP_PROP_FRAME_WIDTH:
+            return float(self.width)
+        if prop_id == cv2.CAP_PROP_FRAME_HEIGHT:
+            return float(self.height)
+        if prop_id == cv2.CAP_PROP_FOURCC:
+            return float(self._fourccToInt(self.fourcc))
+        return 0.0
+
+    def set(self, prop_id, value):
+        if prop_id != cv2.CAP_PROP_POS_FRAMES:
+            return False
+        frame_num = int(value)
+        if frame_num < 0:
+            return False
+        if self.frame_count and frame_num >= self.frame_count:
+            return False
+        if (self.decoded_frame_num is None or frame_num < self.decoded_frame_num or
+                frame_num - self.decoded_frame_num > self.seek_jump_threshold):
+            if not self._seekToFrame(frame_num):
+                self._resetDecoder()
+        self.next_frame = frame_num
+        return True
+
+    def read(self):
+        if not self.isOpened():
+            return False, None
+        if self.frame_count and self.next_frame >= self.frame_count:
+            return False, None
+        if self.decoded_frame_num is not None and self.next_frame < self.decoded_frame_num:
+            self._resetDecoder()
+
+        try:
+            while self.decoded_frame_num is None or self.decoded_frame_num <= self.next_frame:
+                frame_num, frame = self._readDecodedFrame()
+                if frame_num >= self.next_frame:
+                    break
+        except StopIteration:
+            return False, None
+
+        self.next_frame += 1
+        if frame_num != self.next_frame - 1:
+            return False, None
+
+        return True, frame.to_ndarray(format='bgr24')
+
+
 class CustomViewBox(pg.ViewBox):
     def __init__(self, *args, **kwds):
         pg.ViewBox.__init__(self, *args, **kwds)
@@ -10641,6 +10801,13 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
         try:
             cap = Raw24AviReader(filename)
         except (OSError, ValueError, struct.error):
+            try:
+                cap = PyAvAviReader(filename)
+            except Exception:
+                return cap
+
+            if announce_fallback:
+                self.showMsg('OpenCV could not open this AVI; using PyMovie PyAV/FFmpeg AVI reader.')
             return cap
 
         if announce_fallback:
