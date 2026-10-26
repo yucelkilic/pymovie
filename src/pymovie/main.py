@@ -112,6 +112,8 @@ from pathlib import Path
 from urllib.request import urlopen
 from copy import deepcopy
 from pymovie.checkForNewerVersion import getLatestPackageVersion
+from pymovie.pickle_compat import load_numpy_pickle
+from pymovie.aav_capture import AavFitsCapture
 from pymovie import starPositionDialog
 from pymovie import aperturesFileTagDialog
 from pymovie import hotPixelDialog
@@ -1179,9 +1181,9 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
 
         self.convertAviToFitsButton = QtWidgets.QPushButton(self.tab_6)
         self.convertAviToFitsButton.setObjectName("convertAviToFitsButton")
-        self.convertAviToFitsButton.setText("Convert AVI to FITS")
+        self.convertAviToFitsButton.setText("Convert AVI/AAV to FITS")
         self.convertAviToFitsButton.setToolTip(
-            "Write AVI frames or chronological AVI fields as FITS files using the active timestamp OCR profile."
+            "Write AVI/AAV frames or chronological fields as FITS files using the active timestamp OCR profile."
         )
         self.verticalLayout_10.addWidget(self.convertAviToFitsButton)
         self.convertAviToFitsButton.clicked.connect(self.convertAviFramesToFits)
@@ -2774,6 +2776,9 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
         if field_name and field_interval:
             outhdr['EXPTIME'] = float(field_interval)
             outhdr['EXPOSURE'] = float(field_interval)
+        elif getattr(cap, 'exposure_seconds', None):
+            outhdr['EXPTIME'] = float(cap.exposure_seconds / exposure_divisor)
+            outhdr['EXPOSURE'] = float(cap.exposure_seconds / exposure_divisor)
         elif fps:
             exposure = float(1.0 / (fps * exposure_divisor))
             outhdr['EXPTIME'] = exposure
@@ -2792,13 +2797,16 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
         outlist.writeto(outfile, overwrite=True)
 
     def getAviFitsConversionModeFromUser(self):
+        if self.aav_file_in_use and getattr(self, 'aav_num_frames_integrated', None) != 1:
+            self.showMsg('Integrated AAV (or unknown integration): exporting full-frame FITS only.')
+            return 'frames'
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Question)
         msg.setText(
             'Select FITS conversion mode.\n\n'
-            'Field FITS writes two chronological FITS images per AVI frame for high time resolution.'
+            'Field FITS writes two chronological FITS images per video frame for high time resolution.'
         )
-        msg.setWindowTitle('AVI to FITS mode')
+        msg.setWindowTitle('AVI/AAV to FITS mode')
         field_button = msg.addButton('Field FITS', QMessageBox.AcceptRole)
         frame_button = msg.addButton('Full-frame FITS', QMessageBox.ActionRole)
         msg.addButton(QMessageBox.Cancel)
@@ -2820,11 +2828,11 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
         if existing_fits:
             msg.setText(
                 f'{len(existing_fits)} FITS files already exist in:\n\n{out_dir}\n\n'
-                f'Convert {output_count} AVI {unit_name}s? Existing FITS files in this folder will be removed first.'
+                f'Convert {output_count} video {unit_name}s? Existing FITS files in this folder will be removed first.'
             )
         else:
-            msg.setText(f'Convert {output_count} AVI {unit_name}s to FITS files in:\n\n{out_dir}')
-        msg.setWindowTitle('Convert AVI to FITS')
+            msg.setText(f'Convert {output_count} video {unit_name}s to FITS files in:\n\n{out_dir}')
+        msg.setWindowTitle('Convert AVI/AAV to FITS')
         msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         return msg.exec_() == QMessageBox.Yes
 
@@ -2834,7 +2842,7 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
 
         date_text, accepted = QtWidgets.QInputDialog.getText(
             self,
-            'AVI DATE-OBS date',
+            'Video DATE-OBS date',
             'Enter UTC date for DATE-OBS headers (YYYY-MM-DD):',
             text='2000-01-01'
         )
@@ -2876,8 +2884,8 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
         return written
 
     def convertAviFramesToFits(self):
-        if not self.avi_in_use:
-            self.showMsgPopup('This conversion is only available for AVI/MOV files.')
+        if not (self.avi_in_use or self.aav_file_in_use):
+            self.showMsgPopup('This conversion is only available for AVI/MOV/AAV files.')
             return
 
         if not (self.sharpCapTimestampPresent or (self.timestampReadingEnabled and self.timestampFormatter is not None)):
@@ -2886,10 +2894,13 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
 
         video_path = self.avi_location or self.filename
         if not video_path or not os.path.exists(video_path):
-            self.showMsgPopup('The AVI file path is not available.')
+            self.showMsgPopup('The video file path is not available.')
             return
 
-        cap = self.openAviCapture(video_path)
+        if self.aav_file_in_use:
+            cap = AavFitsCapture(self.adv2_reader, self.adv_meta_data)
+        else:
+            cap = self.openAviCapture(video_path)
         if not cap.isOpened():
             self.showMsgPopup(f'{video_path} could not be opened for FITS conversion.')
             return
@@ -2897,7 +2908,7 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         if frame_count <= 0:
             cap.release()
-            self.showMsgPopup('Could not determine the number of frames in the AVI file.')
+            self.showMsgPopup('Could not determine the number of frames in the video file.')
             return
 
         conversion_mode = self.getAviFitsConversionModeFromUser()
@@ -2961,7 +2972,7 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
             output_count,
             self
         )
-        progress_dialog.setWindowTitle('Converting AVI to FITS')
+        progress_dialog.setWindowTitle('Converting video to FITS')
         progress_dialog.setWindowModality(QtCore.Qt.WindowModal)
         progress_dialog.setMinimumDuration(0)
         progress_dialog.setValue(0)
@@ -2969,9 +2980,9 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
 
         try:
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            self.showMsg(f'Converting AVI frames to FITS: {out_dir}')
+            self.showMsg(f'Converting video frames to FITS: {out_dir}')
             if conversion_mode == 'fields':
-                self.showMsg('Field FITS mode: writing two chronological FITS files per AVI frame.')
+                self.showMsg('Field FITS mode: writing two chronological FITS files per video frame.')
             if conversion_date == '2000-01-01' and saved_state['avi_date'] in (None, ''):
                 self.showMsg('DATE-OBS will use date 2000-01-01 because this OCR profile reads time only.')
             elif conversion_date is not None:
@@ -3007,7 +3018,7 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
                     self.stackerProgressBar.setValue(int((frame_num + 1) * 100 / frame_count))
                     progress_dialog.setLabelText(
                         f'Writing FITS {converted} / {output_count}\n'
-                        f'Source AVI frame {frame_num + 1} / {frame_count}\n'
+                        f'Source video frame {frame_num + 1} / {frame_count}\n'
                         f'{out_dir}'
                     )
                     progress_dialog.setValue(converted)
@@ -3018,16 +3029,16 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
 
             if cancelled:
                 self.stackerProgressBar.setValue(0)
-                self.showMsg(f'AVI to FITS conversion cancelled: {converted} files written to {out_dir}')
+                self.showMsg(f'Video to FITS conversion cancelled: {converted} files written to {out_dir}')
                 self.showMsgPopup(f'Conversion cancelled after writing {converted} FITS file(s) in:\n\n{out_dir}')
             else:
                 self.stackerProgressBar.setValue(100 if converted == output_count else 0)
-                self.showMsg(f'AVI to FITS conversion complete: {converted} files written to {out_dir}')
+                self.showMsg(f'Video to FITS conversion complete: {converted} files written to {out_dir}')
                 if failed:
                     self.showMsg(f'{failed} frame(s) were not converted.')
                 self.showMsgPopup(f'Converted {converted} FITS file(s) in:\n\n{out_dir}')
         except Exception as e:
-            self.showMsgPopup(f'AVI to FITS conversion failed:\n\n{repr(e)}')
+            self.showMsgPopup(f'Video to FITS conversion failed:\n\n{repr(e)}')
         finally:
             progress_dialog.close()
             cap.release()
@@ -6038,7 +6049,7 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
         pickled_digits_path = os.path.join(self.ocrDigitsDir, pickled_digits_fn)
 
         if os.path.exists(pickled_digits_path):
-            self.modelDigits = pickle.load(open(pickled_digits_path, "rb"))
+            self.modelDigits = load_numpy_pickle(pickled_digits_path)
             self.showMissingModelDigits()
             return
 
@@ -6046,7 +6057,7 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
         pickled_digits_path = os.path.join(self.homeDir, pickled_digits_fn)
 
         if os.path.exists(pickled_digits_path):
-            self.modelDigits = pickle.load(open(pickled_digits_path, "rb"))
+            self.modelDigits = load_numpy_pickle(pickled_digits_path)
 
         self.showMissingModelDigits()
 
@@ -7400,11 +7411,13 @@ class PyMovie(PyQt5.QtWidgets.QMainWindow, gui.Ui_MainWindow):
         self.updateConvertAviToFitsButtonState()
 
     def updateConvertAviToFitsButtonState(self):
-        cap_available = self.cap is not None and self.cap.isOpened()
+        cap_available = (
+            self.aav_file_in_use and getattr(self, 'adv2_reader', None) is not None
+        ) or (self.avi_in_use and self.cap is not None and self.cap.isOpened())
         timestamp_ready = self.sharpCapTimestampPresent or (
             self.timestampReadingEnabled and self.timestampFormatter is not None
         )
-        self.convertAviToFitsButton.setEnabled(bool(self.avi_in_use and cap_available and timestamp_ready))
+        self.convertAviToFitsButton.setEnabled(bool(cap_available and timestamp_ready))
 
     def getStarPositionString(self, ini_icrs):
         starPos = StarPositionDialog()

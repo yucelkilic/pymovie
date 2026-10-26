@@ -45,6 +45,31 @@ Recent changes in this fork are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 PyMovie requires Python 3.7+ according to the application code. The dependency stack is fairly pinned, so a clean virtual environment is strongly recommended.
 
+### Conda setup (macOS / Apple Silicon)
+
+From the repository root:
+
+```bash
+conda env create -f environment.yml
+conda activate pymovie
+python scripts/build_advcore_macos.py  # Apple Silicon only
+python -m pymovie.main
+```
+
+This environment uses Python 3.10, NumPy 1.23.1, and Numba 0.56 to
+keep the older application dependencies compatible. Qt and the scientific
+libraries come from conda-forge; PyMovie is installed in editable mode.
+The environment file uses the Prefix.dev conda-forge mirror because the
+primary conda-forge host was unreachable during setup.
+On Apple Silicon, the build script replaces Adv2's bundled Intel-only library
+with an ARM64 build from the official ADVCore source at a pinned revision.
+It requires Git and Xcode Command Line Tools (`xcode-select --install`) and
+keeps a backup of the original library. Rerun it if Adv2 is reinstalled.
+Do not install the legacy `requirements.txt` over this environment: it
+includes Windows-only `winshell` and conflicting NumPy/Numba constraints.
+
+### Alternative: virtual environment
+
 ### 1. Clone the repository
 
 ```bash
@@ -112,16 +137,22 @@ The detailed formula is available from the small info button next to the `write 
 
 When default placeholder detector values are still in use, the CSV header includes a `signal_err note` line so downstream analysis can treat those uncertainty values as approximate.
 
-## AVI To FITS Conversion
+## AVI / AAV To FITS Conversion
 
-This fork adds a conversion tool for AVI files with OCR-readable timestamps.
+This fork adds a conversion tool for AVI/MOV and AAV files with OCR-readable timestamps.
 
-After opening an AVI and selecting or defining the OCR timestamp profile, use `Timestamp -> Convert AVI to FITS`. The converter can write either:
+After opening a video and selecting or defining the OCR timestamp profile, use `Timestamp -> Convert AVI/AAV to FITS`. The converter can write either:
 
 - full-frame FITS files to `fits_converted`
 - chronological upper/lower field FITS files to `fits_converted_fields`
 
 Field mode is intended for higher time resolution work. It writes each AVI frame as two FITS images in timestamp order, preserving the upper and lower OCR-derived timestamps in `DATE-OBS`. A progress dialog shows conversion status and allows cancellation.
+
+AAV conversion preserves the reader's 16-bit pixel values and uses OCR for
+`DATE-OBS`. Full-frame exposure comes from the AAV frame metadata when available,
+with the effective frame rate as a fallback. Integrated AAV recordings (or those
+with unknown integration) use full-frame output only; splitting them into fields
+would not provide independent shorter exposures.
 
 ## Documentation
 

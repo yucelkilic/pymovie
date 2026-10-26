@@ -1,0 +1,19 @@
+name: pymovie
+channels:
+  # conda-forge mirror; the primary host was unreachable during setup.
+  - https://repo.prefix.dev/conda-forge
+  - nodefaults
+dependencies:
+  - python=3.10
+  - pip
+  - numpy=1.23.1
+  - numba=0.56
+  - pyqt=5
+  - matplotlib=3.5
+  - scipy=1.9
+  - scikit-image=0.19
+  - astropy=5
+  - pip:
+      - opencv-python==4.6.0.66
+      - ravf~=1.0.1
+      - -e .

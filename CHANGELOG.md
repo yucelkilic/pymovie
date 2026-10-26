@@ -4,6 +4,14 @@ This changelog tracks **fork-specific** changes in this repository.
 
 It is not a replacement for the original PyMovie version history bundled in `src/pymovie/PyMovie-info.pdf`. That PDF reflects the upstream project history; this file records the custom work done in this personal fork.
 
+## 2026-10-26
+
+### Fixed
+
+- load OCR digit templates saved with NumPy 2 in the NumPy 1.x environment
+- enable OCR-based FITS conversion for AAV files, preserving 16-bit pixels and
+  native frame exposure; restrict integrated AAV recordings to full-frame output
+
 ## 2026-08-09
 
 ### Added
