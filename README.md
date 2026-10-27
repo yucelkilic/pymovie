@@ -154,6 +154,39 @@ with the effective frame rate as a fallback. Integrated AAV recordings (or those
 with unknown integration) use full-frame output only; splitting them into fields
 would not provide independent shorter exposures.
 
+## Tests
+
+Run the regression suite from the repository root in the configured PyMovie
+environment:
+
+```bash
+conda activate pymovie
+python -m pip install -r requirements-test.txt
+python -m unittest discover -s tests -v
+```
+
+On Apple Silicon, complete the ADVCore build described in the installation
+instructions first. The tests import the application module, which loads Adv2.
+PyAV is required by the video tests; missing dependencies fail test discovery
+rather than silently skipping those checks.
+
+The suite covers:
+
+- OCR pickle compatibility across the NumPy module rename
+- RV24 frame pixels, RIFF padding, seeking, truncated input, and reader fallback
+- lossless FFV1 video decoding through PyAV, including forward and backward seeking
+- FITS pixel values, OCR validity, field order, timestamps, and exposure headers
+- AAV conversion completion, cancellation, decode errors, and declined confirmation
+- numerical limiting cases for the photometry uncertainty and SNR calculation
+
+Video fixtures and FITS outputs are generated in temporary directories. No
+observation files are required. AAV decoding and OCR recognition are simulated
+in the conversion tests; these tests do not establish recognition accuracy on
+real recordings. The midnight test checks the interval between fields, not
+calendar-date rollover across a recording. The noise tests check the implemented
+calculation, not the physical calibration of the detector or an empirical
+validation of the noise model. The suite does not exercise the interactive GUI.
+
 ## Documentation
 
 The application already ships with two bundled PDF documents:

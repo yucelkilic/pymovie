@@ -1,0 +1,3 @@
+# Install into an already configured PyMovie environment.
+# Required for the real FFV1 encode/decode tests; missing PyAV fails discovery.
+av>=12,<17

@@ -4,6 +4,17 @@ This changelog tracks **fork-specific** changes in this repository.
 
 It is not a replacement for the original PyMovie version history bundled in `src/pymovie/PyMovie-info.pdf`. That PDF reflects the upstream project history; this file records the custom work done in this personal fork.
 
+## 2026-10-27
+
+### Added
+
+- regression tests using generated RV24 and lossless FFV1 AVI files for pixel
+  preservation, seeking, truncated input, and reader fallback
+- FITS timestamp, field ordering, invalid OCR, and exposure-header tests
+- AAV cancellation, decode-failure, and declined-confirmation tests
+- numerical limiting-case tests for photometry uncertainty and SNR
+- test dependency file and instructions documenting coverage and limitations
+
 ## 2026-10-26
 
 ### Fixed

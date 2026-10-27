@@ -86,11 +86,26 @@ class AavFitsTests(unittest.TestCase):
         state.convertAviToFitsButton.setEnabled.assert_called_with(True)
 
     def test_aav_conversion_loop_writes_and_restores_state(self):
-        capture, pixels = self.make_capture()
+        self.check_conversion()
+
+    def test_cancel_restores_state_and_keeps_reader_open(self):
+        self.check_conversion(cancelled=True)
+
+    def test_decode_failure_restores_state_and_keeps_reader_open(self):
+        self.check_conversion(error='damaged frame')
+
+    def test_declined_confirmation_preserves_existing_fits(self):
+        self.check_conversion(confirmed=False)
+
+    def check_conversion(self, cancelled=False, error='', confirmed=True):
+        capture, pixels = self.make_capture(error=error)
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / 'sample.aav'
             source.touch()
             output = Path(directory) / 'fits_converted'
+            if not confirmed:
+                output.mkdir()
+                (output / 'existing.fits').write_bytes(b'keep existing data')
             state = Mock(
                 avi_in_use=False, aav_file_in_use=True,
                 sharpCapTimestampPresent=False, timestampReadingEnabled=True,
@@ -102,7 +117,7 @@ class AavFitsTests(unittest.TestCase):
             state.getAviFitsConversionModeFromUser.return_value = 'frames'
             state.getAviFitsConversionDateFromUser.return_value = '2026-10-26'
             state.getAviFitsOutputDir.return_value = str(output)
-            state.confirmAviFitsConversion.return_value = True
+            state.confirmAviFitsConversion.return_value = confirmed
             state.aviFrameToGray.side_effect = PyMovie.aviFrameToGray
             state.getConvertedFrameTimestampInfo.return_value = dict(
                 date_obs='2026-10-26T01:02:03.040', upper_timestamp='01:02:03.040',
@@ -113,12 +128,23 @@ class AavFitsTests(unittest.TestCase):
             state.writeConvertedFitsFrame.side_effect = lambda *args, **kwargs: PyMovie.writeConvertedFitsFrame(state, *args, **kwargs)
             with patch('pymovie.main.QtWidgets.QProgressDialog') as progress, \
                     patch('pymovie.main.QtGui.QGuiApplication.processEvents'):
-                progress.return_value.wasCanceled.return_value = False
+                progress.return_value.wasCanceled.return_value = cancelled
                 PyMovie.convertAviFramesToFits(state)
             state.openAviCapture.assert_not_called()
-            state.getConvertedFrameTimestampInfo.assert_called_once()
-            state.writeConvertedFrameFits.assert_called_once()
-            np.testing.assert_array_equal(fits.getdata(output / 'frame-000000.fits'), pixels)
+            if cancelled or error or not confirmed:
+                state.getConvertedFrameTimestampInfo.assert_not_called()
+                state.writeConvertedFrameFits.assert_not_called()
+                self.assertFalse((output / 'frame-000000.fits').exists())
+                if error:
+                    self.assertIn(error, state.showMsgPopup.call_args.args[0])
+                if not confirmed:
+                    self.assertEqual((output / 'existing.fits').read_bytes(), b'keep existing data')
+                    state.clearExistingFitsFiles.assert_not_called()
+                    capture.reader.getMainImageAndStatusData.assert_not_called()
+            else:
+                state.getConvertedFrameTimestampInfo.assert_called_once()
+                state.writeConvertedFrameFits.assert_called_once()
+                np.testing.assert_array_equal(fits.getdata(output / 'frame-000000.fits'), pixels)
             np.testing.assert_array_equal(state.image, pixels)
             self.assertTrue(state.analysisPaused)
             capture.reader.closeFile.assert_not_called()
